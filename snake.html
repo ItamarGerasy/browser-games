@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+<script>
+
+let canvas;
+let canvasContext;
+let boxDistanceFromEdge = 20;
+//box border thickness 2px
+//distance of box from edge = boxDistanceFromEdge
+
+let foodRadious = 2;
+const foodCords = {};
+
+let framesPerSecond = 15;
+
+let snakeX = 400;
+let snakeY = 300;
+//size of the snake vertebras in px
+let snakeSize = 10;
+//numbers of vertebras the snake will start with
+let initialSize = 15;
+let snakeColor = 'white';
+
+let showStartScreen = true;
+let showLoseScreen = false;
+
+//link is a vertebra in the snakes body
+function Link(x, y, size, color) {
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.color = color;
+
+    this.draw = function() {
+        colorRect(this.x, this.y, this.size, this.size, this.color)
+    }
+}
+
+const snake = {
+    moveDir: undefined,
+    x: snakeX,
+    y: snakeY,
+    size: snakeSize,
+    links: initilizeSnake(snakeX, snakeY, initialSize),
+
+    get head(){
+        return this.links[this.links.length - 1]
+    },
+
+    paint() {
+        this.links.forEach( l => l.draw() );
+    },
+
+    move() {
+        let newLink = this.links.shift();
+        switch(this.moveDir){
+            case 'right':
+                newLink.x = this.head.x + 10;
+                newLink.y = this.head.y;
+                break;
+            case 'left':
+                newLink.x = this.head.x - 10;
+                newLink.y = this.head.y
+                break;
+            case 'up':
+                newLink.x = this.head.x;
+                newLink.y = this.head.y - 10;
+                break;
+            case 'down':
+                newLink.x = this.head.x;
+                newLink.y = this.head.y + 10;
+                break;
+        }
+        this.links.push(newLink); 
+    },
+
+    // return true if the head of the snake is toucing the food
+    foundFood(){
+        if(foodCords.x >= this.head.x && foodCords.x <= this.head.x + snakeSize){
+            if(foodCords.y >= this.head.y && foodCords.y <= this.head.y + snakeSize){
+                console.log("nom nom");
+                return true;
+            }
+        }
+    },
+
+    //gets the face center cordinates
+    get faceCenter(){
+        const head = this.links[this.links.length - 1];
+        let faceCenter = {};
+        switch(this.moveDir){
+            case 'right':
+                faceCenter = {
+                    x: this.head.x + snakeSize, 
+                    y: this.head.y + snakeSize/2
+                };
+                break;
+            case 'left':
+                faceCenter = {
+                    x: this.head.x, 
+                    y: this.head.y + snakeSize/2
+                };
+                break;
+            case 'up':
+                faceCenter = {
+                    x: this.head.x + snakeSize/2,
+                    y: this.head.y
+                };
+                break;
+            case 'down':
+                faceCenter = {
+                    x: this.head.x + snakeSize/2,
+                    y: this.head.y + snakeSize
+                };
+                break;
+        }
+        return faceCenter;
+    },
+
+    //adds a vertebra after the tail, which then would move straight to be the head
+    grow(){
+        const newTail = {...this.links[0]};
+        this.links.unshift(newTail);
+    },
+
+    //return true if the snake hit the box edges
+    hitBox(){
+        if(this.faceCenter.x < boxDistanceFromEdge || this.faceCenter.x > canvas.width - boxDistanceFromEdge){
+            console.log('i hit the box');
+            return true;
+        }
+        if(this.faceCenter.y < boxDistanceFromEdge || this.faceCenter.y > canvas.height - boxDistanceFromEdge){
+            console.log('i hit the box');
+            return true;
+        }
+        return false;
+    },
+    
+    //returns true if the snake hit himself
+    hitHimself(){
+        let hit = false;
+
+        this.links.forEach((link) => {
+            if(link !== this.head){
+                if(link.x === this.head.x && link.y === this.head.y)
+                {
+                    console.log("awww i ran right into myselft");
+                    hit = true;
+                }
+            }
+        })
+
+        return hit;
+    },
+    
+    get length(){
+        return this.links.length;
+    },
+
+    reset(){
+        this.links = initilizeSnake(this.x, this.y, initialSize);
+    }
+}
+
+window.onload = function() {
+	
+	canvas = document.getElementById("gameCanvas");
+	canvasContext = canvas.getContext("2d");
+	
+    
+    setInterval(() => {
+        moveEverything();
+	    drawEverything();
+    }, 1000/framesPerSecond);
+
+    
+    document.onkeydown = handleKey;
+
+}
+
+//handles keys
+function handleKey(e) {
+        e = e || window.event;
+        
+        if(showStartScreen){
+            showStartScreen = false;
+        }
+        if(showLoseScreen){
+            showStartScreen = true;
+            snake.reset();
+            showLoseScreen = false;
+        }
+
+        switch(e.keyCode){
+            case 38:
+                // up arrow
+                if(snake.moveDir !== 'down'){
+                    snake.moveDir = 'up';
+                }
+                break;
+            case 40:
+                // down arrow
+                if(snake.moveDir !== 'up'){
+                    snake.moveDir = 'down';
+                }
+                break;
+            case 37:
+                // left arrow   
+                if(snake.moveDir !== 'right'){
+                    snake.moveDir = 'left';
+                }
+                break;
+            case 39:
+                // right arrow
+                if(snake.moveDir !== 'left'){
+                    snake.moveDir = 'right';
+                }
+                break;
+        }
+ }
+
+function drawEverything() {
+    // draw backround
+    colorRect(0,0,canvas.width,canvas.height, 'black');
+    drawBox(boxDistanceFromEdge);
+    if(showLoseScreen){
+        canvasContext.fillText("click => arrow to start again",350,300);
+        canvasContext.fillText(`YOU LOST`,370,200);
+        canvasContext.fillText(`your snake is ${snake.length} vertebrae`,350,250);
+        return; // freezing the game
+    }
+    if(showStartScreen){
+        snake.paint();
+        generateFoodCoords();
+        colorCircle(foodCords.x, foodCords.y, foodRadious, 'white');
+        return; // freezing the game
+    }
+
+    snake.paint();
+
+    //paint the food
+    colorCircle(foodCords.x, foodCords.y, foodRadious, 'white');
+    
+}
+
+function moveEverything() {
+    if(showStartScreen || showLoseScreen){
+        return; // freezing the game
+    } 
+    snake.move()
+    if(snake.foundFood()){
+        snake.grow();
+        generateFoodCoords();
+    }
+    if(snake.hitHimself() || snake.hitBox()){
+        snake.moveDir = 'right';
+        showLoseScreen = true;
+    }
+}
+
+//create the first snake you see on the screen
+function initilizeSnake(x, y, initialSize) {
+    let initialSnake = [];
+    for( let i = 0 ; i < initialSize ; i++ ){
+        initialSnake.push(new Link( x + (snakeSize*i), y, snakeSize, snakeColor ));
+    }
+    return initialSnake;
+}
+
+function drawBox(distanceFromEdge){
+    colorRect(distanceFromEdge,distanceFromEdge, canvas.width - (distanceFromEdge*2), canvas.height - (distanceFromEdge*2), 'white');
+    colorRect(distanceFromEdge+2,distanceFromEdge+2, canvas.width - (distanceFromEdge*2+4), canvas.height - (distanceFromEdge*2+4), 'black');
+    canvasContext.fillStyle = 'white';
+}
+
+//gets random number between 2 guven numbers, might be equel to min but not to max
+function getRandomNumber(min, max) {
+  return Math.floor(Math.random() * (max - min) + min);
+}
+
+function generateFoodCoords(){
+    let minFoodX = foodRadious * 2 + boxDistanceFromEdge;
+    let maxFoodX = canvas.width - foodRadious * 2 - boxDistanceFromEdge;
+    let minFoodY = foodRadious * 2 + boxDistanceFromEdge;
+    let maxFoodY = canvas.height - foodRadious * 2 - boxDistanceFromEdge;
+
+    foodCords.x = getRandomNumber(minFoodX, maxFoodX);
+    foodCords.y = getRandomNumber(minFoodY, maxFoodY);
+}
+
+//draw a rectangle
+function colorRect (leftX, topY, width, height, color){
+	canvasContext.fillStyle = color;
+	canvasContext.fillRect(leftX,topY,width,height);
+}
+
+//draw a circle
+function colorCircle(centerX, centerY, radious, color){
+	canvasContext.fillStyle = color;
+	canvasContext.beginPath();
+	canvasContext.arc(centerX, centerY, radious, 10, 0, Math.PI*2, true);
+	canvasContext.fill();
+}
+</script>
+</body>
+</html>

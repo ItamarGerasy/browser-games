@@ -1,0 +1,286 @@
+<html>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<script>
+var canvas;
+var canvasContext;
+var framesPerSecond = 60;
+
+var ballRadious = 5;
+
+const ballStart = {
+    x: 400,
+    y: 400,
+    speedX: 5,
+    speedY: 5,
+    lives: 3
+};
+
+var ballX = ballStart.x;
+var ballSpeedX = ballStart.speedX;
+var ballY = ballStart.y;
+var ballSpeedY = ballStart.speedY;
+
+var paddleX;
+const PADDLE_WIDTH = 150;
+
+var panelWidth = 100;
+var panelHeight = 10;
+var panelRows = 5;
+var panelColor = 'red'
+var panels = [];
+
+var freezScreen = true;
+var win = false;
+
+var lives = ballStart.lives;
+
+function Panel(x, y, width, height, color) {
+    this.exist = true,
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    this.color = color;
+    this.paint = function(){
+        if(this.exist){
+         colorRect (this.x, this.y, this.width, this.height, color);
+        }
+    }
+    this.getBottomBorder = function(){
+        return this.y + this.height;
+    }
+    this.getRightBorder = function(){
+        return this.x + this.width;
+    }
+    this.destroy = function(){
+        this.exist = false;
+    }
+    this.hitSides = function(ballX, ballY){
+        if(!this.exist) return false;
+        //check side hits
+        if(ballX + ballRadious === this.x || ballX - ballRadious === this.getRightBorder()){
+            if(ballY >= this.y && ballY <= this.getBottomBorder()){
+                console.log("hit left/right side");
+                return true;
+                
+            }
+        }
+        //ball corners
+        let tl = {x:ballX-10, y:ballY-10};
+        let tr = {x:ballX+10, y:ballY-10};
+        let bl = {x:ballX-10, y:ballY+10};
+        let br = {x:ballX+10, y:ballY+10};
+        let leftCorners = [tl, bl];
+        let rightCorners = [tr, br];
+        //check left corners for side hit
+        for(let i = 0 ; i < leftCorners.length ; i++){
+            if(leftCorners[i].x === this.getRightBorder()){
+                if(leftCorners[i].y >= this.y && leftCorners[i].y <= this.getBottomBorder()){
+                    console.log("left corners hit side");
+                    return true;
+                }
+            }
+        }
+        //check right corners for side hit
+        for(let i = 0 ; i < rightCorners.length ; i++){
+            if(rightCorners[i].x === this.x){
+                if(rightCorners[i].y >= this.y && rightCorners[i].y <= this.getBottomBorder()){
+                    console.log("right corners hit side");
+                        return true;
+                }
+            }
+        }
+            
+    }
+    this.hitTopOrBottom = function(ballX, ballY){
+        if(!this.exist) return false;
+        //check sides
+        if(ballY + ballRadious === this.y || ballY - ballRadious === this.getBottomBorder()){
+            if(ballX >= this.x && ballX <= this.getRightBorder()){
+                console.log("top or bottom side hit");
+                return true;
+            }
+        }
+        let tl = {x:ballX-10, y:ballY-10};
+        let tr = {x:ballX+10, y:ballY-10};
+        let bl = {x:ballX-10, y:ballY+10};
+        let br = {x:ballX+10, y:ballY+10};
+        let bottomCorners = [tl, tr];
+        let topCorners = [bl, br];
+        //check bottom corner hit top
+        for(let i = 0 ; i < bottomCorners.length; i++){
+            if(bottomCorners[i].y === this.y){
+                if(bottomCorners[i].x >= this.x && bottomCorners[i].x <= this.getBottomBorder()){
+                    console.log("bottom corner hit top")
+                    return true;
+                }
+            }
+        }
+        //check top corner hit bottom
+        for(let i = 0 ; i < topCorners.length; i++){
+            if(topCorners[i].y === this.getBottomBorder()){
+                if(topCorners[i].x >= this.x && topCorners[i].x <= this.y){
+                    console.log("top corner hit bottom")
+                    return true;
+                }
+            }
+        }
+    }
+}
+
+window.onload = function() {
+	
+	canvas = document.getElementById("gameCanvas");
+	canvasContext = canvas.getContext("2d");
+	
+    fillPanels(panelRows);
+	setInterval(callBoth, 1000/framesPerSecond);
+
+    console.log("hello");
+
+    //gets mouse position as Paddle position
+	canvas.addEventListener('mousemove', function(evt){
+		var mousePos = calculateMousePos(evt);
+		paddleX = mousePos.x - PADDLE_WIDTH/2;
+	});
+    // call function to handle mouse click
+    canvas.addEventListener('mousedown', handleMouseClick);
+
+}
+
+function handleMouseClick(evt){
+	if(freezScreen){
+        ballX = ballStart.x;
+        ballSpeedX = ballStart.speedX;
+        ballY = ballStart.y;
+        ballSpeedY = ballStart.speedY;
+        if(lives === 0){
+            lives = ballStart.lives;
+        }
+        freezScreen = false;
+	}
+}
+
+function drawPanels(){
+    panels = panels.filter(panel => panel.exist);
+    for(let i = 0 ; i < panels.length ; i++){
+        panels[i].paint();
+    }
+}
+
+function fillPanels(panelRows){
+    let panelY = 100;
+    for(let i = 0 ; i < panelRows ; i++){
+        for(let j = 25 ; (j <= canvas.width - panelWidth - ballRadious*2) ; j += panelWidth + ballRadious*2){
+            panels.push(new Panel(j, panelY, panelWidth, panelHeight, panelColor));
+        }
+        panelY += panelHeight + 10;
+    }
+}
+
+
+callBoth = function(){
+    drawEverything();
+    moveEverything();
+}
+
+drawEverything = function(){
+    colorRect(0,0, canvas.width, canvas.height, 'black'); // draws background
+    colorRect(paddleX, canvas.height - 10, PADDLE_WIDTH, 10, 'white'); // Paddle
+    colorCircle(ballX, ballY, ballRadious, 'white'); // ball
+    drawPanels();
+    if(freezScreen){
+        if(win){
+            colorRect(0,0, canvas.width, canvas.height, 'black'); // draws background
+            canvasContext.fillStyle = "white";
+            canvasContext.font = "60px Ariel";
+            canvasContext.fillText("You Win!", 270, 300);
+            canvasContext.font = "30px Ariel";
+            canvasContext.fillText("click to restart", 310, 450);
+            panels = [];
+            fillPanels(panelRows);
+        } else if(lives === 0){
+            colorRect(0,0, canvas.width, canvas.height, 'black'); // draws background
+            canvasContext.fillStyle = "white";
+            canvasContext.font = "60px Ariel";
+            canvasContext.fillText("Game Over", 270, 300);
+            canvasContext.font = "30px Ariel";
+            canvasContext.fillText("click to restart", 310, 450);
+            panels = [];
+            fillPanels(panelRows);
+        } else {
+            canvasContext.font = "30px Ariel";
+            canvasContext.fillStyle = "white";
+            canvasContext.fillText("You have " + lives + " left", 310, 350);
+            canvasContext.fillText("click to continue", 310, 450);
+        }
+    }
+    
+}
+
+moveEverything = function(){
+    if(freezScreen) return;
+    ballX += ballSpeedX;
+    ballY += ballSpeedY;
+    if(ballY <= ballRadious) ballSpeedY = -ballSpeedY;
+    //change direction if paddle hit ball
+    if(ballY + ballRadious >= 590){
+        if(ballX >= paddleX && ballX < paddleX + PADDLE_WIDTH){
+            ballSpeedY = -ballSpeedY;
+            var deltaPaddle = ballX - (paddleX + PADDLE_WIDTH/2); // these 2 lines make the ball move faster relativly to where it hits the paddle
+			ballSpeedX = deltaPaddle * 0.2;
+        }
+    }
+    if(ballX <= ballRadious || ballX >= canvas.width-ballRadious){
+        ballSpeedX = -ballSpeedX;
+    }
+    //delete panel if hits him
+    panels.forEach(panel => {
+        if(panel.hitSides(ballX, ballY)){
+            panel.destroy();
+            if(panels.filter(panel => panel.exist).length === 0){
+                win = true;
+                freezScreen = true;
+            } 
+            ballSpeedX = - ballSpeedX;
+        }
+        if(panel.hitTopOrBottom(ballX, ballY)){
+            panel.destroy();
+            if(panels.filter(panel => panel.exist).length === 0){
+                win = true;
+                freezScreen = true;
+            } 
+            ballSpeedY = -ballSpeedY;
+        }
+    });
+    if(ballY >= canvas.height){
+        lives--;
+        freezScreen = true;
+    }
+
+
+
+}
+function calculateMousePos(evt) {
+	let rect = canvas.getBoundingClientRect();
+	let root = document.documentElement;
+	let mouseX = evt.clientX - rect.left - root.scrollLeft;
+	let mouseY = evt.clientY - rect.top - root.scrollTop;
+	return {x:mouseX, y:mouseY};
+}
+
+function colorRect (leftX, topY, width, height, color){
+	canvasContext.fillStyle = color;
+	canvasContext.fillRect(leftX,topY,width,height);
+}
+
+//draw a circle
+function colorCircle(centerX, centerY, radious, color){
+	canvasContext.fillStyle = color;
+	canvasContext.beginPath();
+	canvasContext.arc(centerX, centerY, radious, 10, 0, Math.PI*2, true);
+	canvasContext.fill();
+}
+</script>
+
+</html>
