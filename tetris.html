@@ -9,5 +9,777 @@
 <body>
     <canvas id="gameCanvas" width="280" height="400"></canvas>
 </body>
-<script src="tetris.js"></script>
+<script>
+    let canvas;
+    let canvasContext;
+
+    let framesPerSecond = 1;
+
+    let allBlocks = [];
+    let currShape;
+    let blockSize = 20;
+    let score = 0;
+
+    let showLoseScreen = false;
+    let showStartScreen = true;
+
+    class Shape {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.color = color;
+            this.direction = 'up';
+        }
+
+        draw() {
+            for (let block of this.blocks) {
+                block.draw();
+            }
+        }
+
+        slide() {
+            for (let block of this.blocks) {
+                block.topY += blockSize;
+            }
+        }
+
+        tilt() {
+        }
+
+        moveRight() {
+            if (this.canMoveRight()) {
+                for (let block of this.blocks) {
+                    block.leftX += blockSize;
+                }
+            }
+        }
+
+        moveLeft() {
+            if (this.canMoveLeft()) {
+                for (let block of this.blocks) {
+                    block.leftX -= blockSize;
+                }
+            }
+        }
+
+        //checks if the shape has a block from it's right, return true if can move and false if can't
+        canMoveRight() {
+            for (let currBlock of this.blocks) {
+                //checks if the shape is still in bounds of the screen
+                if (currBlock.leftX === canvas.width - (blockSize * 2)) {
+                    return false;
+                }
+                //checks if another block is not blocking the way to move
+                for (let block of allBlocks) {
+                    if (block.topY == currBlock.topY &&
+                        block.leftX - blockSize == currBlock.leftX) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        //checks if the shape has a block from it's left, return true if can move and false if can't
+        canMoveLeft() {
+            for (let currBlock of this.blocks) {
+                //checks if the shape is still in bounds of the screen
+                if (currBlock.leftX === blockSize) {
+                    return false;
+                }
+                //checks if another block is not blocking the way to move
+                let inLineBlocks = allBlocks.filter(b => b.topY === currBlock.topY);
+                for (let block of inLineBlocks) {
+                    if (block.topY == currBlock.topY &&
+                        block.leftX + blockSize == currBlock.leftX) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        hitBottom() {
+            //check if the shape hit the bottom
+            for (let block of this.blocks) {
+                if (block.topY === canvas.height - blockSize) {
+                    return true;
+                }
+            }
+            //checks if one of the shapes blocks hitted another block
+            //iterates through all the blocks who have been generated already
+            for (let block of allBlocks) {
+                //iterates through the blocks of the shape who is now sliding down
+                for (let currBlock of this.blocks) {
+                    if (currBlock.isTouching(block)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    class Square extends Shape {
+        constructor(x, y, color) {
+            super(x, y, color);
+            this.blocks = [
+                Block(this.x, this.y, this.color),
+                Block(this.x + blockSize, this.y, this.color),
+                Block(this.x, this.y + blockSize, this.color),
+                Block(this.x + blockSize, this.y + blockSize, this.color)
+            ]
+        }
+    }
+
+    class Line extends Shape {
+        constructor(x, y, color) {
+            super(x, y, color);
+            this.blocks = [
+                Block(this.x, this.y, this.color),
+                Block(this.x + blockSize, this.y, this.color),
+                Block(this.x + (blockSize * 2), this.y, this.color),
+                Block(this.x + (blockSize * 3), this.y, this.color)
+            ];
+
+        }
+
+
+        tilt() {
+            //for convinience of writing
+            let x = 'leftX';
+            let y = 'topY';
+            let baseX = this.blocks[0][x];
+            let baseY = this.blocks[0][y];
+            switch (this.direction) {
+                case 'up':
+                    for (let i in this.blocks) {
+                        this.blocks[i][x] = baseX;
+                        this.blocks[i][y] = baseY - (blockSize * i);
+                    }
+                    this.direction = 'down';
+                    break;
+                case 'down':
+                    //gets an array of the X's of all the blocks in the same line as the Line base block
+                    //and sort them in ascending order
+                    let inLineBlocks =
+                        allBlocks.filter(block => block[y] === baseY)
+                            .map(b => b.leftX)
+                            .sort((a, b) => a - b);
+
+                    //this loop counts how many free slots are there depending on the current position of the Line
+                    // and if it's greater then 4 it will tilt
+                    let counter = 12;
+                    for (let i = 0; i < inLineBlocks.length; i++) {
+                        //if the line is between the left border and a block
+                        if (i === 0 && inLineBlocks[i] > baseX) {
+                            counter = (inLineBlocks[i] - blockSize) / blockSize
+                        }
+                        //if the line is between 2 blocks
+                        console.log(inLineBlocks[i]);
+                        if (inLineBlocks[i] < baseX && inLineBlocks[i + 1] > baseX) {
+                            counter = (inLineBlocks[i + 1] - inLineBlocks[i] - blockSize) / blockSize;
+                        }
+                        //if the line is between the right border and a block
+                        if (i === inLineBlocks.length && inLineBlocks[i] < baseX) {
+                            counter = (canvas.width - blockSize * 2 - inLineBlocks[i] + blockSize) / blockSize;
+                        }
+                    }
+                    if (counter < 4) return;
+
+                    //tilts the Line
+                    for (let i in this.blocks) {
+                        this.blocks[i][x] = baseX + (blockSize * i);
+                        this.blocks[i][y] = baseY;
+                    }
+                    //if while tilting the shape got out of bounds or enters another block it will move it back
+                    for (let block of this.blocks) {
+                        if (block[x] > canvas.width - (blockSize * 2)) {
+                            this.moveLeft();
+                        }
+                        if (inLineBlocks.includes(block[x])) {
+                            this.blocks.forEach(b => b.leftX -= blockSize);
+                        }
+                    }
+                    this.direction = 'up'
+                    break;
+            }
+        }
+    }
+
+    class ZShape extends Shape {
+        constructor(x, y, color) {
+            super(x, y, color);
+            this.blocks = [
+                Block(this.x + blockSize, this.y + blockSize, this.color),
+                Block(this.x + (blockSize * 2), this.y + blockSize, this.color),
+                Block(this.x + blockSize, this.y, this.color),
+                Block(this.x, this.y, this.color)
+            ];
+        }
+        tilt() {
+            //for convinience of writing
+            let block2 = this.blocks[2];
+            let block3 = this.blocks[3];
+            let x = 'leftX';
+            let y = 'topY';
+            switch (this.direction) {
+                case 'up':
+                    block3[x] += blockSize * 2;
+                    block2[y] += blockSize * 2;
+                    //if the block is tilted when there is a block below it, it will push the shape up
+                    for (let block of allBlocks) {
+                        if (block[x] == block2[x] && block[y] == block2[y]) {
+                            this.blocks.forEach(b => b[y] -= blockSize);
+                        }
+                    }
+                    this.direction = 'down';
+                    break;
+                case 'down':
+                    //checks if the border or another block is in blocking the way for the shape to tilt
+                    for (let block of allBlocks) {
+                        if ((block[x] == block3[x] - (blockSize * 2) && block[y] == block3[y])
+                            || block3[x] === (blockSize * 2)) {
+                            if (this.canMoveRight()) {
+                                this.moveRight()
+                            } else {
+                                return;
+                            }
+                        }
+                    }
+                    block3[x] -= blockSize * 2;
+                    block2[y] -= blockSize * 2;
+                    this.direction = 'up';
+                    break;
+            }
+            //if while tilting the shape got out of bounds it will move it back
+            for (let block of this.blocks) {
+                while (block[x] > canvas.width - (blockSize * 2)) {
+                    this.moveLeft();
+                }
+                while (block[x] < blockSize) {
+                    this.moveRight();
+                }
+            }
+        }
+    }
+
+    class SShape extends Shape {
+        constructor(x, y, color) {
+            super(x, y, color);
+            this.blocks = [
+                Block(this.x, this.y + blockSize, this.color),
+                Block(this.x - blockSize, this.y + blockSize, this.color),
+                Block(this.x, this.y, this.color),
+                Block(this.x + blockSize, this.y, this.color)
+            ];
+        }
+        tilt() {
+            //for convinience of writing
+            let block1 = this.blocks[1];
+            let block3 = this.blocks[3];
+            let x = 'leftX';
+            let y = 'topY';
+            switch (this.direction) {
+                case 'up':
+                    //if the block is tilted when there is a block blocking it's way
+                    for (let block of allBlocks) {
+                        if ((block[x] == block3[x] - blockSize * 2 && block[y] == block3[y])
+                            || (block[x] == block1[x] && block[y] == block1[y] - blockSize * 2)) {
+                            if (this.canMoveRight()) {
+                                this.moveRight();
+                            } else {
+                                return;
+                            }
+                        }
+                    }
+                    block1[y] -= blockSize * 2;
+                    block3[x] -= blockSize * 2;
+                    this.direction = 'down';
+                    break;
+                case 'down':
+                    //checked if ant blocks blocking the shape from tilting, if the shape can move and tilt it will
+                    //if not it will stay the same
+                    for (let block of allBlocks) {
+                        if (block[x] == block1[x] && block[y] == block1[y] + blockSize * 2) {
+                            console.log(`block1 is blocked`);
+                            this.blocks.forEach(b => b.topY -= blockSize);
+                        }
+                        if (block[y] == block3[y] && block[x] == block3[x] + (blockSize * 2)) {
+                            console.log(`block3 is blocked`);
+                            if (this.canMoveLeft()) {
+                                this.moveLeft();
+                            } else {
+                                return;
+                            }
+                        }
+                    }
+                    block1[y] += blockSize * 2;
+                    block3[x] += blockSize * 2;
+                    this.direction = 'up'
+                    break;
+            }
+            //if while tilting the shape got out of bounds it will move it back
+            for (let block of this.blocks) {
+                while (block[x] > canvas.width - (blockSize * 2)) {
+                    this.moveLeft();
+                }
+                while (block[x] < blockSize) {
+                    this.moveRight();
+                }
+            }
+        }
+    }
+
+    class JShape extends Shape {
+        constructor(x, y, color) {
+            super(x, y, color);
+            this.blocks = [
+                Block(this.x - blockSize, this.y + (blockSize * 2), this.color),
+                Block(this.x, this.y + (blockSize * 2), this.color),
+                Block(this.x, this.y + blockSize, this.color),
+                Block(this.x, this.y, this.color)
+            ];
+        }
+
+        tilt() {
+            let jFeet = this.blocks[0];
+            let block1 = this.blocks[1];
+            let block2 = this.blocks[2];
+            let block3 = this.blocks[3];
+            //for convinience of writing
+            let x = 'leftX';
+            let y = 'topY';
+            // block2 will always take block1 place, and block1 will take feet place
+            block2.copyCords(block1);
+            block1.copyCords(jFeet);
+            switch (this.direction) {
+                case 'up':
+                    //gets all the x coordinates of the blocks which are in line with the feet of the shape
+                    //and pushes the x of the shapes there
+                    let inLineBlocks = allBlocks.filter(b => b[y] === jFeet[y])
+                        .map(b => b[x]);
+                    inLineBlocks.push(jFeet[x]);
+                    inLineBlocks.sort((a, b) => a - b);
+                    let counter = 12;
+                    let indexOfFeet = inLineBlocks.indexOf(jFeet[x]);
+                    let hasRoom = true;
+                    console.log(inLineBlocks);
+                    console.log(this.direction);
+                    //if the shape is between left border and a block, if there are less then 3 free space,
+                    // it will not tilt
+                    if (indexOfFeet == 0) {
+                        console.log(((inLineBlocks[1] - blockSize) / blockSize) < 3);
+                        if (((inLineBlocks[1] - blockSize) / blockSize) < 3) {
+                            hasRoom = false;
+                        }
+                        console.log(`hasRoom: ${hasRoom}`);
+                    } else {
+                        //if the shape is between right border and a block, if there are less then 3 free space,
+                        // it will not tilt
+                        if (indexOfFeet == inLineBlocks.length - 1) {
+                            if (((canvas.width - (blockSize * 2) - inLineBlocks[indexOfFeet - 1]) / blockSize) < 3) {
+                                hasRoom = false;
+                            }
+                        } else {
+                            //if the shape is between blocks, if there are less then 3 free space,
+                            // it will not tilt
+                            if (((inLineBlocks[indexOfFeet + 1] - inLineBlocks[indexOfFeet - 1] + blockSize) / blockSize) < 3) {
+                                hasRoom = false;
+                            }
+                        }
+                    }
+                    if (hasRoom == false) {
+                        console.log('no room to tilt');
+                        return;
+                    }
+                    jFeet[y] -= blockSize;
+
+                    block3[x] = block2[x] + blockSize;
+                    block3[y] = block2[y];
+                    this.direction = 'right';
+
+                    break;
+                case 'right':
+                    jFeet[x] += blockSize;
+
+                    block3[x] = block2[x];
+                    block3[y] = block2[y] + blockSize;
+                    this.direction = 'down'
+                    break;
+                case 'down':
+                    jFeet[y] += blockSize;
+
+                    block3[x] = block2[x] - blockSize;
+                    block3[y] = block2[y];
+                    this.direction = 'left'
+                    break;
+                case 'left':
+                    jFeet[x] -= blockSize;
+
+                    block3[x] = block2[x];
+                    block3[y] = block2[y] - blockSize;
+                    this.direction = 'up';
+                    break;
+            }
+            //if while tilting the shape got out of bounds it will move it back
+            for (let block of this.blocks) {
+                if (block[x] > canvas.width - (blockSize * 2)) {
+                    this.moveLeft();
+                }
+                if (block[x] < blockSize) {
+                    this.moveRight();
+                }
+            }
+        }
+    }
+
+    class LShape extends Shape {
+        constructor(x, y, color) {
+            super(x, y, color);
+            this.blocks = [
+                Block(this.x + blockSize, this.y + (blockSize * 2), this.color),
+                Block(this.x, this.y + (blockSize * 2), this.color),
+                Block(this.x, this.y + blockSize, this.color),
+                Block(this.x, this.y, this.color)
+            ]
+        }
+
+        tilt() {
+            let lFeet = this.blocks[0];
+            let block1 = this.blocks[1];
+            let block2 = this.blocks[2];
+            let block3 = this.blocks[3];
+            //for convinience of writing
+            let x = 'leftX';
+            let y = 'topY';
+            // the feet block will always take block1 place, and block1 will take block2 place
+            lFeet.copyCords(block1);
+            block1.copyCords(block2);
+            switch (this.direction) {
+                case 'up':
+                    block2[x] += blockSize;
+
+                    block3[x] = block2[x] + blockSize;
+                    block3[y] = block2[y];
+                    this.direction = 'right';
+                    break;
+                case 'right':
+                    block2[y] += blockSize;
+
+                    block3[x] = block2[x];
+                    block3[y] = block2[y] + blockSize;
+                    this.direction = 'down'
+                    break;
+                case 'down':
+                    block2[x] -= blockSize
+
+                    block3[x] = block2[x] - blockSize;
+                    block3[y] = block2[y];
+                    this.direction = 'left'
+                    break;
+                case 'left':
+                    block2[y] -= blockSize;
+
+                    block3[x] = block2[x];
+                    block3[y] = block2[y] - blockSize;
+                    this.direction = 'up';
+                    break;
+            }
+            //if while tilting the shape got out of bounds it will move it back
+            for (let block of this.blocks) {
+                while (block[x] > canvas.width - (blockSize * 2)) {
+                    this.moveLeft();
+                }
+                while (block[x] < blockSize) {
+                    this.moveRight();
+                }
+            }
+        }
+    }
+
+    class Plus extends Shape {
+        constructor(x, y, color) {
+            super(x, y, color);
+            this.blocks = [
+                Block(this.x + blockSize, this.y, this.color),
+                Block(this.x, this.y, this.color),
+                Block(this.x + blockSize, this.y - blockSize, this.color),
+                Block(this.x + blockSize * 2, this.y, this.color),
+            ],
+                //the edge is the block who should be moved in order to tilt the Plus
+                this.edgeIndex = 1;
+        }
+
+        //flips the Plus 90 degrees, by changing the location of 1 block(the edge block)
+        tilt() {
+            let edgeBlock = this.blocks[this.edgeIndex];
+            switch (this.direction) {
+                case 'up':
+                    edgeBlock.leftX += blockSize;
+                    edgeBlock.topY += blockSize;
+                    if (this.edgeIndex === 3)
+                        this.edgeIndex = 1;
+                    else
+                        this.edgeIndex++;
+                    this.direction = 'right';
+                    break;
+                case 'right':
+                    edgeBlock.leftX -= blockSize;
+                    edgeBlock.topY += blockSize;
+                    //if a block prevents the plus from rotating, it will move
+                    allBlocks.forEach(block => {
+                        if (block.leftX == edgeBlock.leftX && block.topY == edgeBlock.topY) {
+                            this.moveRight();
+                        }
+                    })
+                    if (this.edgeIndex === 3)
+                        this.edgeIndex = 1;
+                    else
+                        this.edgeIndex++;
+                    this.direction = 'down';
+                    break;
+                case 'down':
+                    edgeBlock.leftX -= blockSize;
+                    edgeBlock.topY -= blockSize;
+                    if (this.edgeIndex === 3)
+                        this.edgeIndex = 1;
+                    else
+                        this.edgeIndex++;
+                    this.direction = 'left';
+                    break;
+                case 'left':
+                    edgeBlock.leftX += blockSize;
+                    edgeBlock.topY -= blockSize;
+                    //if a block prevents the plus from rotating, it will move
+                    allBlocks.forEach(block => {
+                        if (block.leftX == edgeBlock.leftX && block.topY == edgeBlock.topY) {
+                            this.moveLeft();
+                        }
+                    })
+                    if (this.edgeIndex === 3)
+                        this.edgeIndex = 1;
+                    else
+                        this.edgeIndex++;
+                    this.direction = 'up';
+                    break;
+            }
+            //if while tilting the shape got out of bounds it will move it back
+            for (let block of this.blocks) {
+                if (block.leftX > canvas.width - (blockSize * 2)) {
+                    this.moveLeft();
+                }
+                if (block.leftX < blockSize) {
+                    this.moveRight();
+                }
+            }
+        }
+    }
+
+    function Block(x, y, color) {
+        return {
+            leftX: x,
+            topY: y,
+            color: color,
+            exsist: true,
+
+            draw() {
+                if (!this.exsist) return;
+                colorBlock(this.leftX, this.topY, blockSize, this.color);
+            },
+
+            erase() {
+                this.exsist = false;
+                return this;
+            },
+
+            copyCords(block) {
+                this.leftX = block.leftX;
+                this.topY = block.topY;
+            },
+
+            isTouching(block) {
+                if (this.leftX === block.leftX && this.topY + blockSize === block.topY)
+                    return true;
+                else
+                    return false;
+            }
+        }
+    };
+
+    window.onload = function () {
+
+        canvas = document.getElementById("gameCanvas");
+        canvasContext = canvas.getContext("2d");
+
+        setInterval(() => {
+            drawEverything();
+        }, 1000 / 60);
+
+        setInterval(() => {
+            moveEverything();
+        }, 1000 / framesPerSecond);
+
+        document.onkeydown = handleKey;
+
+    }
+
+    function handleKey(e) {
+        e = e || window.event;
+        if (showStartScreen) {
+            showStartScreen = false;
+            score = 0;
+            genrateShape();
+        }
+        if (showLoseScreen) {
+            allBlocks = [];
+            showLoseScreen = false;
+            showStartScreen = true;
+        }
+        switch (e.keyCode) {
+            case 38:
+                // up arrow
+                currShape.tilt();
+                break;
+            case 40:
+                // down arrow
+                moveEverything();
+                break;
+            case 37:
+                // left arrow 
+                currShape.moveLeft();
+                break;
+            case 39:
+                // right arrow
+                currShape.moveRight();
+                break;
+        }
+    }
+
+    function genrateShape() {
+        let shapeNum = getRandomNumber(1, 8);
+        let shapeMap = {
+            1: Square,
+            2: Line,
+            3: ZShape,
+            4: SShape,
+            5: JShape,
+            6: LShape,
+            7: Plus
+        };
+        let colorNum = getRandomNumber(1, 7);
+        let colorMap = {
+            1: 'green',
+            2: 'yellow',
+            3: 'red',
+            4: 'orange',
+            5: 'white',
+            6: 'blue'
+        }
+        //depending on the shape, generates a random number of the tilt position of the shape
+        let tiltNum =
+            shapeNum > 4 ? getRandomNumber(1, 5) :
+                shapeNum > 1 ? getRandomNumber(1, 3) : 0;
+        let tiltMap = {
+            1: 'up',
+            2: 'down',
+            3: 'right',
+            4: 'left'
+        };
+        currShape = new shapeMap[shapeNum](canvas.width / 2, -20, colorMap[colorNum]);
+        //tilts the shape untill it reaches the random tilt position
+        while (tiltNum && tiltMap[tiltNum] !== currShape.direction)
+            currShape.tilt();
+
+    }
+
+    function moveEverything() {
+        if (showStartScreen || showLoseScreen) return;
+        if (currShape.hitBottom()) {
+            if (currShape.blocks.some(block => block.topY <= blockSize * 3)) {
+                showLoseScreen = true;
+            }
+            allBlocks.push(...currShape.blocks);
+            checkLines();
+            genrateShape();
+            //console.log(currShape);
+        }
+        currShape.slide();
+        if (score > 100) {
+            framesPerSecond = 4;
+        }
+    }
+
+    function drawEverything() {
+        drawScreen();
+        if (showStartScreen) {
+            canvasContext.fillStyle = 'white';
+            canvasContext.fillText('Press Any Key To Start', 90, 150);
+            return;
+        }
+        if (showLoseScreen) {
+            canvasContext.fillStyle = 'white';
+            canvasContext.fillText(`Game Over`, 110, 150);
+            canvasContext.fillText(`Your Score: ${score}`, 105, 170);
+            canvasContext.fillText('Press Any Key To Comtinue', 70, 200);
+            return;
+        }
+        for (let block of allBlocks) {
+            block.draw();
+        }
+        currShape.draw();
+    }
+
+    //checking if a line is full if there is it will get erased
+    function checkLines() {
+        let tempArray = [];
+        let potentialLines = allBlocks.length / 12;
+        let firstLine = canvas.height - blockSize;
+        let lineCounter = 0;
+        for (let i = firstLine; i >= firstLine - (potentialLines * blockSize); i -= blockSize) {
+            // console.log(`i: ${i}, potenital lines:${potentialLines}, condition: i ${firstLine - (potentialLines * blockSize)}`);
+            tempArray = allBlocks.filter(block => block.topY == i);
+            if (tempArray.length === 12) {
+                lineCounter++;
+                tempArray.forEach(block => block.erase());
+                allBlocks = allBlocks.filter(block => block.exsist)
+                allBlocks.forEach(block => {
+                    if (block.topY < i) {
+                        block.topY += blockSize;
+                    }
+                })
+                i += blockSize;
+            }
+        }
+        score += 12 * Math.pow(lineCounter, 2);
+    }
+
+    //draws a shape block
+    function colorBlock(leftX, topY, size, color) {
+        canvasContext.fillStyle = 'grey';
+        canvasContext.fillRect(leftX, topY, size, size);
+        canvasContext.fillStyle = color;
+        canvasContext.fillRect(leftX + 0.5, topY + 0.5, size - 1, size - 1);
+    }
+
+    function drawScreen() {
+        colorRect(0, 0, canvas.width, canvas.height, 'black');
+        for (let i = 0; i < canvas.height; i += blockSize) {
+            colorBlock(0, i, blockSize, 'brown');
+            colorBlock(canvas.width - blockSize, i, blockSize, 'brown');
+        }
+        canvasContext.fillStyle = 'white';
+        canvasContext.fillText(`score: ${score}`, 200, 20);
+    }
+    //draw a rectangle
+    function colorRect(leftX, topY, width, height, color) {
+        canvasContext.fillStyle = color;
+        canvasContext.fillRect(leftX, topY, width, height);
+    }
+
+    //gets random number between 2 guven numbers, might be equel to min but not to max
+    function getRandomNumber(min, max) {
+        return Math.floor(Math.random() * (max - min) + min);
+    }
+    </script>
 </html>
